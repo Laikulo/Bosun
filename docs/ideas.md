@@ -7,6 +7,7 @@
 ## Non-Goals
 * Build klipper binaries, that is the goal of a related project. However, itegration with such a service is probably a good idea.
 * Control klipper operation or machine state in general, maybe provide the service stop/start for klippy. (however, if a target needs an service restarted, like the linux_process version)
+* Bosun should not explictly depend on using my fork of klipper, nor any other tools that are part of it's ecosystem (even though shipright, harbormaster and/or klipper-o-mat would probably be used in most installs)
 
 ## Ways to update boards
 ### Katapult over CAN
