@@ -1,25 +1,26 @@
 # Bosun
 
-## Goals
-* Using a list of boards running klipper, and their connectivity methods and parameters, upgrade all to the same version with a minimum of human interaction.
-* Provide a dbus service to allow control of the flashing process, list and manage available local versions, and download/request builds of binaries.
+## Summary
+While bosun's initial scope only included managing versions of klipper MCU's Bosun's scope has expanded to be a management wrapper for Klipper.
 
-## Non-Goals
-* Build klipper binaries, that is the goal of a related project. However, itegration with such a service is probably a good idea.
-* Control klipper operation or machine state in general, maybe provide the service stop/start for klippy. (however, if a target needs an service restarted, like the linux_process version)
-* Bosun should not explictly depend on using my fork of klipper, nor any other tools that are part of it's ecosystem (even though shipright, harbormaster and/or klipper-o-mat would probably be used in most installs)
+## Desired functionality
+Note: Bosun's functions are intended to be modular, one or more may be used or not.
 
-## Ways to update boards
-### Katapult over CAN
-* verify klipper is not running
-* request bootloader mode (flashtool -r)
-* if a new canboot is scheduled, flash use canboot to flash the deployer, reboot if needed
-* use katapult to flash ne binary
+### Lifecycle mangement of klipper.
+* Install klipper host, manage dependencies of same, using OS packages as much as possible.
+    * (wrap kiauah as possible)
+* Build and flash klipper mcu firmware
 
-### Katapult over USB-CDC with CDC Klipper
-* send the "request serial bootloader" magic klipper string
-* flashtool -d /dev/DEVICE -f file.txt (katapult first if needed) 
+### Configuration externalization
+* Shim printer.cfg to allow storing save_config items in an external storage.
+* Retrieve klipper config from some other storage.
 
-### Katapult over USB-CDC with CanBridge
-* request bootloader mode (flashtool -r)
-* flashtool -d /dev/DEVICE (katapult first if needed)
+### Config templating
+* Generate configuration from a higher level configuraiton langauge, covering most cases, and avoiding dumb cases (probes w/o safe_z_home)
+* Also a set of validation rules to help prevent mistakes.
+
+### Extension and python path management.
+* Allow specification of extentions, either by modifying pythonpath, or building one with overlays (or possibly symlinks in a tempdir)
+
+### Configuration
+* A UI to manage bosun's configs, or configs of other systems.
