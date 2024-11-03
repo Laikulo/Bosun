@@ -3,6 +3,7 @@ from pathlib import Path
 from os import PathLike
 from typing import Dict
 from configparser import ConfigParser
+from pprint import pprint as pp
 
 
 class KlippyHost(object):
@@ -17,6 +18,10 @@ class KlippyHost(object):
         }
         kc.generate_config(test_io)
         print(test_io.getvalue())
+
+        sc = kc.extract_saveconfig(Path('printer.cfg').read_text())
+
+        pp(sc)
 
 
 class KlippyConfig(object):
@@ -71,6 +76,40 @@ class KlippyConfig(object):
         if saved_config:
             out_stream.write(self.dict_to_saveconfig(saved_config))
 
+    def extract_saveconfig(self, in_stream):
+        sio = StringIO()
+        is_in_config = False
+        found_header = False
+        for line in in_stream.splitlines(True):
+            if not found_header:
+                if line == "#*# <---------------------- SAVE_CONFIG ---------------------->\n":
+                    found_header = True
+                    continue
+                else:
+                    continue
+            if not is_in_config:
+                # Config begins after a blank config-prefixed line
+                if line == "#*#\n":
+                    is_in_config = True
+                    continue
+                else:
+                    continue
+            # At this point, we are in a config line
+            if line[:4] == "#*# ":
+                sio.write(line[4:])
+                continue
+            elif line == "#*#\n":
+                sio.write(line)
+                continue
+            else:
+                break
+        temp_parser = ConfigParser()
+        temp_parser.read_string(sio.getvalue())
+        return {s:{k:temp_parser[s][k] for k in temp_parser[s].keys()} for s in temp_parser.sections()}
+
+
+
+
 
 class KlippyHostProcessConfig(object):
     """
@@ -95,13 +134,13 @@ class KlippyHostProcessConfig(object):
         startup_args = []
 
         if self.input_tty_path:
-            startup_args += ['-I', input_tty_path]
+            startup_args += ['-I', self.input_tty_path]
 
         if self.api_socket_path:
-            startup_args += ['-a', api_socket_path]
+            startup_args += ['-a', self.api_socket_path]
 
         if self.log_path:
-            startup_args += ['-l', log_path]
+            startup_args += ['-l', self.log_path]
 
         if self.verbose:
             startup_args.append('-v')
@@ -110,6 +149,6 @@ class KlippyHostProcessConfig(object):
             startup_args.append(self.config_path)
 
         if self.extra_args:
-            startup.args += extra_args
+            startup_args += self.extra_args
 
         return startup_args
