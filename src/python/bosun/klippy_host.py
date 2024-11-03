@@ -1,8 +1,17 @@
 from pathlib import Path
 from os import PathLike
 
+from dataclass import dataclass
+
 class KlippyHost(object):
-    pass
+
+    def setup_env(self):
+
+
+
+class KlippyConfig(object):
+    def __init__
+
 
 
 class KlippyHostProcessConfig(object):
