@@ -1,7 +1,7 @@
 from io import StringIO
 from pathlib import Path
 from os import PathLike
-from typing import Dict
+from typing import Dict, Optional, List
 from configparser import ConfigParser
 from pprint import pprint as pp
 
@@ -126,7 +126,7 @@ class KlippyHostProcessConfig(object):
         self.extra_args: List[str] = []
 
     def validate(self):
-        if not config_path:
+        if not self.config_path:
             raise ValueError("Printer configuration path was unspecified")
 
     def startup_args(self):
