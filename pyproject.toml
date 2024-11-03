@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bosun"
+authors = {
+    {name = "Aaron Haun", email = "aaron@haun.guru"}
+}
+description = "A utility for managing klipper at runtime"
+readme = README.md
+requires_python = ">=3.8"
+license = {text = "GPL3"}
+dynamic = ["version"]
+
+[tool.setuptools.packages.find]
+where = [ "src/python" ]
