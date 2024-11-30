@@ -4,24 +4,82 @@ from os import PathLike
 from typing import Dict, Optional, List
 from configparser import ConfigParser
 from pprint import pprint as pp
+from abc import ABC, abstractmethod
+import json
 
 
 class KlippyHost(object):
 
     def setup_env(self):
-        test_io = StringIO("")
+        kc = KlippyConfig("printer.cfg", "json:./saved.json")
 
-        kc = KlippyConfig()
+        kc.included_paths.append("/etc/klipper/printer.cfg")
+
         kc.base_config_entries['test'] = {
             'a': '1',
             'b': '2'
         }
+
+        kc.override_config_entries['mcu'] = {
+            'serial': '/dev/ttyS0'
+        }
+
+        test_io = StringIO("")
         kc.generate_config(test_io)
         print(test_io.getvalue())
 
-        sc = kc.extract_saveconfig(Path('printer.cfg').read_text())
 
-        pp(sc)
+
+class KlippySavedConfigProvider(ABC):
+
+    @classmethod
+    @abstractmethod
+    def configure(spec: str) -> 'KlippySavedConfigProvider':
+        pass
+
+    @abstractmethod
+    def store_config(config: Dict) -> None:
+        pass
+    
+    @abstractmethod
+    def retrieve_config() -> Dict:
+        pass
+
+
+class DummySavedConfigProvider(KlippySavedConfigProvider):
+    @classmethod
+    def configure(cls, _: str) -> 'DummySavedConfigProvider':
+        return cls()
+
+    def store_config(_, config: Dict) -> None:
+        pass
+
+    def retrieve_config(_) -> Dict:
+        return {
+            "hi there": {
+                "nice to": "meet you",
+                "what is": "your name"
+            }
+        }
+
+class JsonSavedConfigProvider(KlippySavedConfigProvider):
+    @classmethod
+    def configure(cls, filename: str) -> 'JsonSavedConfigProvider':
+        return cls(filename)
+
+    def __init__(self, filename: str):
+        self.__filepath = Path(filename)
+
+    def retrieve_config(self) -> Dict:
+        if self.__filepath.exists():
+            with self.__filepath.open() as input_file:
+                return dict(json.load(input_file))
+        else:
+            return {}
+
+    def store_config(self, data: Dict) -> None:
+        with self.__filepath.open("w+") as out_file:
+            json.dump(data, out_file, indent=4)
 
 
 class KlippyConfig(object):
@@ -37,19 +95,25 @@ class KlippyConfig(object):
         "#*# DO NOT EDIT THIS BLOCK OR BELOW. The contents are auto-generated.\n" \
         "#*#\n"
 
-    def __init__(self):
+    def __init__(self, base_filename, saved_config_spec):
         self.process_config = KlippyHostProcessConfig()
-        self.saved_config_type = "dummy"
         self.base_config_entries: Dict[str, Dict[str, str]] = {}
+        self.override_config_entries: Dict[str, Dict[str, str]] = {}
+        self.included_paths: List[str] = []
+        self._filename = base_filename
+        self._saved_config_provider = self.get_saved_config_provider(saved_config_spec)
 
-    def get_saved_config(self):
-        return {
-            "hi there": {
-                "nice to": "meet you",
-                "what is": "your name"
-            }
-        }
 
+    @staticmethod
+    def get_saved_config_provider(spec):
+        spec_segments = spec.split(":", 1)
+        spec_class = spec_segments[0].title() + "SavedConfigProvider"
+        if len(spec_segments) < 2:
+            args = ""
+        else:
+            args = spec_segments[1]
+        return globals()[spec_class].configure(args)
+            
     def dict_to_config_stream(self, data, out_stream) -> None:
         temp_parser = ConfigParser()
         temp_parser.read_dict(data)
@@ -71,8 +135,10 @@ class KlippyConfig(object):
     def generate_config(self, out_stream):
         out_stream.write(KlippyConfig.BANNER)
         self.dict_to_config_stream(self.base_config_entries, out_stream)
-
-        saved_config = self.get_saved_config()
+        include_blocks = {f"include {s}": {} for s in self.included_paths}
+        self.dict_to_config_stream(include_blocks, out_stream)
+        self.dict_to_config_stream(self.override_config_entries, out_stream)
+        saved_config = self.retrieve_saved_config()
         if saved_config:
             out_stream.write(self.dict_to_saveconfig(saved_config))
 
@@ -107,7 +173,12 @@ class KlippyConfig(object):
         temp_parser.read_string(sio.getvalue())
         return {s:{k:temp_parser[s][k] for k in temp_parser[s].keys()} for s in temp_parser.sections()}
 
+    def store_saved_config(self):
+        with open(self._filename) as in_config:
+            self._saved_config_provider.store_config(self.extract_saveconfig(in_config.read()))
 
+    def retrieve_saved_config(self):
+        return self._saved_config_provider.retrieve_config()
 
 
 
@@ -152,3 +223,5 @@ class KlippyHostProcessConfig(object):
             startup_args += self.extra_args
 
         return startup_args
+
+# vim: set sts=4 sw=4 ts=4 et: 
