@@ -6,28 +6,65 @@ from configparser import ConfigParser
 from pprint import pprint as pp
 from abc import ABC, abstractmethod
 import json
+import subprocess
+import signal
+import logging
+import asyncio
 
 
 class KlippyHost(object):
 
+    def __init__(self, klippy_host="~/klipper/klippy/klippy.sh", config_filename="klippy-bosun.cfg", save_provider="json:saved.json"):
+        self.kc = KlippyConfig(config_filename, save_provider)
+        self._running: bool = False
+        self._proc = None
+
+    def register_hooks(self, register_fn):
+        def startup_hook():
+            logging.warning("Starting up module - klippy host management")
+        register_fn("bosun:system_startup", startup_hook)
+        def job_hook(register_fn):
+            register_fn(self.run)
+        register_fn("bosun:register_jobs", job_hook)
+
+    @classmethod
+    def configure(cls, _):
+        return cls()
+
     def setup_env(self):
-        kc = KlippyConfig("printer.cfg", "json:./saved.json")
+        self.kc.included_paths.append("printer.cfg")
 
-        kc.included_paths.append("/etc/klipper/printer.cfg")
+        self.kc.generate_config_file()
 
-        kc.base_config_entries['test'] = {
-            'a': '1',
-            'b': '2'
-        }
+    async def run(self):
+        self.setup_env()
+        logging.info("Starting Klippy")
+        self._proc = await asyncio.create_subprocess_exec(*self.kc.process_config.full_args())
+        self._running = True
+        try:
+            await self._proc.wait()
+        except KeyboardInterrupt:
+            await self._proc.send_signal(signal.SIGINT)
+            await self._proc.wait()
+        logging.info("Klippy termianted")
+        self._proc = None
+        self._running = False
+        self.kc.store_saved_config()
 
-        kc.override_config_entries['mcu'] = {
-            'serial': '/dev/ttyS0'
-        }
+    def start(self):
+        self.setup_env()
+        proc_args = self.kc.process_config.full_args()
+        pp(proc_args)
+        self._proc = subprocess.Popen(proc_args)
+        self._ruinning = True
 
-        test_io = StringIO("")
-        kc.generate_config(test_io)
-        print(test_io.getvalue())
+    def handle_stop(self):
+        self._running = False
+        self._proc = None
+        self.kc.store_saved_config()
 
+    def get_proc(self):
+        return self._proc
 
 
 class KlippySavedConfigProvider(ABC):
@@ -102,6 +139,7 @@ class KlippyConfig(object):
         self.included_paths: List[str] = []
         self._filename = base_filename
         self._saved_config_provider = self.get_saved_config_provider(saved_config_spec)
+        self.process_config.config_path = base_filename
 
 
     @staticmethod
@@ -141,6 +179,10 @@ class KlippyConfig(object):
         saved_config = self.retrieve_saved_config()
         if saved_config:
             out_stream.write(self.dict_to_saveconfig(saved_config))
+
+    def generate_config_file(self):
+        with open(self._filename, "w") as conf_file:
+            self.generate_config(conf_file)
 
     def extract_saveconfig(self, in_stream):
         sio = StringIO()
@@ -188,6 +230,9 @@ class KlippyHostProcessConfig(object):
     """
 
     def __init__(self):
+        self.interperter_path: Optional[PathLike] = None
+        self.klippy_path: Optional[PathLike] = None
+        self.venv_path: Optional[PathLike] = None
         self.config_path: Optional[PathLike] = None
         self.input_tty_path: Optional[PathLike] = None
         self.api_socket_path: Optional[PathLike] = None
@@ -199,9 +244,17 @@ class KlippyHostProcessConfig(object):
     def validate(self):
         if not self.config_path:
             raise ValueError("Printer configuration path was unspecified")
+        if not self.klippy_path:
+            raise ValueError("Klipper binary path not specified")
 
-    def startup_args(self):
-        self.validate()
+    def find_interp(self):
+        if self.interperter_path:
+            return Path(self.interperter_path).absolute()
+        if self.venv_path:
+            return (Path(self.venv_path) / 'bin' / 'python3').absolute()
+        return "python3"
+
+    def klippy_args(self):
         startup_args = []
 
         if self.input_tty_path:
@@ -223,5 +276,9 @@ class KlippyHostProcessConfig(object):
             startup_args += self.extra_args
 
         return startup_args
+
+    def full_args(self):
+        self.validate()
+        return [ str(self.find_interp()), str(self.klippy_path) ] + self.klippy_args()
 
 # vim: set sts=4 sw=4 ts=4 et: 
